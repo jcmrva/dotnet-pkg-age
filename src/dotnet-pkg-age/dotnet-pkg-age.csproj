@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <Nullable>enable</Nullable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>pkg-age</ToolCommandName>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>dotnet-pkg-age</PackageId>
+    <Authors>jcmrva</Authors>
+    <Company>n/a</Company>
+    <PackageReadmeFile>readme.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/jcmrva/dotnet-pkg-age</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../readme.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
