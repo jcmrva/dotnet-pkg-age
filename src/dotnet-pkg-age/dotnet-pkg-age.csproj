@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="dotnet-pkg-age.tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="NuGet.Protocol" />
     <PackageReference Include="NuGet.Versioning" />
     <PackageReference Include="System.CommandLine" />
