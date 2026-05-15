@@ -13,7 +13,7 @@ public static class CommandLineBuilder
             Description = "The package to check"
         };
 
-        Argument<string> ageArg = new("min-age-days")
+        Argument<int> ageArg = new("min-age-days")
         {
             Description = "Desired minimum age of the package in days"
         };
@@ -23,20 +23,28 @@ public static class CommandLineBuilder
             Description = "The package version to check"
         };
 
+        Option<string?> cacheFileOption = new("--cache-file", "-c")
+        {
+            Description = "Path to the cache file (default: ~/.dotnet-pkg-age/cache.json)"
+        };
+
         Command pkgCommand = new("package", "Check a specific package")
         {
             nameArg,
             versionArg,
-            ageArg
+            ageArg,
+            cacheFileOption
         };
 
-        RootCommand rootCommand = new("A dotnet tool to check the age of a NuGet package");
+        RootCommand rootCommand = new("A dotnet tool to check the age of NuGet packages");
 
         pkgCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             string packageName = parseResult.GetValue(nameArg)!;
-            int minAgeDays = parseResult.GetValue(ageArg) is string ageStr && int.TryParse(ageStr, out int age) ? age : 0;
+            int minAgeDays = parseResult.GetValue(ageArg);
             string version = parseResult.GetValue(versionArg)!;
+            if (parseResult.GetValue(cacheFileOption) is { } cacheFile)
+                Cache.CachePath = cacheFile;
             await HandleCommand(packageName, version, minAgeDays);
         });
 
