@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace DotnetPkgAge;
@@ -26,6 +27,23 @@ public static class Cache
         var entries = Load();
         entries[Key(packageName, version)] = published;
         Save(entries);
+    }
+
+    public static void ClearAll()
+    {
+        if (File.Exists(CachePath))
+            File.Delete(CachePath);
+    }
+
+    public static int Evict(string packageName)
+    {
+        var entries = Load();
+        var prefix = $"{packageName}@";
+        var keys = entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+        foreach (var key in keys)
+            entries.Remove(key);
+        Save(entries);
+        return keys.Count;
     }
 
     private static Dictionary<string, DateTimeOffset> Load()

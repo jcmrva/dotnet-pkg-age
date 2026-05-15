@@ -93,4 +93,68 @@ public class CacheTests : IDisposable
         Assert.Equal(date1, result1);
         Assert.Equal(date2, result2);
     }
+
+    [Fact]
+    public void ClearAll_RemovesAllEntries()
+    {
+        Cache.Set("PackageA", "1.0.0", DateTimeOffset.UtcNow);
+        Cache.Set("PackageB", "2.0.0", DateTimeOffset.UtcNow);
+
+        Cache.ClearAll();
+
+        Assert.False(Cache.TryGet("PackageA", "1.0.0", out _));
+        Assert.False(Cache.TryGet("PackageB", "2.0.0", out _));
+    }
+
+    [Fact]
+    public void ClearAll_DoesNotThrow_WhenCacheIsEmpty()
+    {
+        var ex = Record.Exception(() => Cache.ClearAll());
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Evict_RemovesAllVersionsOfPackage()
+    {
+        Cache.Set("Newtonsoft.Json", "12.0.3", DateTimeOffset.UtcNow);
+        Cache.Set("Newtonsoft.Json", "13.0.3", DateTimeOffset.UtcNow);
+        Cache.Set("PackageB", "1.0.0", DateTimeOffset.UtcNow);
+
+        Cache.Evict("Newtonsoft.Json");
+
+        Assert.False(Cache.TryGet("Newtonsoft.Json", "12.0.3", out _));
+        Assert.False(Cache.TryGet("Newtonsoft.Json", "13.0.3", out _));
+        Assert.True(Cache.TryGet("PackageB", "1.0.0", out _));
+    }
+
+    [Fact]
+    public void Evict_ReturnsCountOfRemovedEntries()
+    {
+        Cache.Set("Newtonsoft.Json", "12.0.3", DateTimeOffset.UtcNow);
+        Cache.Set("Newtonsoft.Json", "13.0.3", DateTimeOffset.UtcNow);
+
+        var removed = Cache.Evict("Newtonsoft.Json");
+
+        Assert.Equal(2, removed);
+    }
+
+    [Fact]
+    public void Evict_ReturnsZero_WhenPackageNotInCache()
+    {
+        var removed = Cache.Evict("NonExistentPackage");
+
+        Assert.Equal(0, removed);
+    }
+
+    [Fact]
+    public void Evict_IsCaseInsensitive()
+    {
+        Cache.Set("Newtonsoft.Json", "13.0.3", DateTimeOffset.UtcNow);
+
+        var removed = Cache.Evict("newtonsoft.json");
+
+        Assert.Equal(1, removed);
+        Assert.False(Cache.TryGet("Newtonsoft.Json", "13.0.3", out _));
+    }
 }
