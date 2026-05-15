@@ -1,3 +1,3 @@
-﻿using System;
+﻿using DotnetPkgAge;
 
-Console.WriteLine("Hello, World!");
+return CommandLineBuilder.Build().Parse(args).Invoke();
