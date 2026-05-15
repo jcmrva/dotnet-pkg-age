@@ -1,5 +1,6 @@
 using System;
 using System.CommandLine;
+using System.Threading.Tasks;
 
 namespace DotnetPkgAge;
 
@@ -17,19 +18,26 @@ public static class CommandLineBuilder
             Description = "Desired minimum age of the package in days"
         };
 
+        Argument<string> versionArg = new("version")
+        {
+            Description = "The package version to check"
+        };
+
         Command pkgCommand = new("package", "Check a specific package")
         {
             nameArg,
+            versionArg,
             ageArg
         };
 
         RootCommand rootCommand = new("A dotnet tool to check the age of a NuGet package");
 
-        pkgCommand.SetAction(parseResult =>
+        pkgCommand.SetAction(async (parseResult, cancellationToken) =>
         {
             string packageName = parseResult.GetValue(nameArg)!;
             int minAgeDays = parseResult.GetValue(ageArg) is string ageStr && int.TryParse(ageStr, out int age) ? age : 0;
-            HandleCommand(packageName, minAgeDays);
+            string version = parseResult.GetValue(versionArg)!;
+            await HandleCommand(packageName, version, minAgeDays);
         });
 
         rootCommand.Subcommands.Add(pkgCommand);
@@ -37,10 +45,19 @@ public static class CommandLineBuilder
         return rootCommand;
     }
 
-    private static void HandleCommand(string packageName, int minAgeDays = 0)
+    private static async Task HandleCommand(string packageName, string version, int minAgeDays = 0)
     {
-        // TODO: implement
+        Console.WriteLine($"Package {packageName} {version} should be at least {minAgeDays} days old.");
 
-        Console.WriteLine($"Package {packageName} should be at least {minAgeDays} days old.");
+        bool meetsRequirement = await NuGetAPI.GetPackageInfo(packageName, version, minAgeDays);
+
+        if (meetsRequirement)
+        {
+            Console.WriteLine($"Package {packageName} {version} meets the age requirement.");
+        }
+        else
+        {
+            Console.WriteLine($"Package {packageName} {version} does NOT meet the age requirement.");
+        }
     }
 }
