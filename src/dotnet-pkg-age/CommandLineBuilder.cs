@@ -36,13 +36,19 @@ public static class CommandLineBuilder
         };
         formatOption.AcceptOnlyFromAmong("text", "json");
 
+        Option<bool> ignoreBypassOption = new("--ignore-bypass")
+        {
+            Description = $"Ignore the bypass list at {BypassList.DefaultPath}"
+        };
+
         Command pkgCommand = new("package", "Check a specific package")
         {
             nameArg,
             versionArg,
             ageArg,
             cacheFileOption,
-            formatOption
+            formatOption,
+            ignoreBypassOption
         };
 
         RootCommand rootCommand = new("A dotnet tool to check the age of NuGet packages");
@@ -53,9 +59,10 @@ public static class CommandLineBuilder
             int minAgeDays = parseResult.GetValue(ageArg);
             string version = parseResult.GetValue(versionArg)!;
             string format = parseResult.GetValue(formatOption)!;
+            bool ignoreBypass = parseResult.GetValue(ignoreBypassOption);
             if (parseResult.GetValue(cacheFileOption) is { } cacheFile)
                 Cache.CachePath = cacheFile;
-            return await HandleCommand(packageName, version, minAgeDays, format);
+            return await HandleCommand(packageName, version, minAgeDays, format, ignoreBypass);
         });
 
         Option<bool> clearAllOption = new("--clear-all")
@@ -104,8 +111,17 @@ public static class CommandLineBuilder
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private static async Task<int> HandleCommand(string packageName, string version, int minAgeDays = 0, string format = "text")
+    private static async Task<int> HandleCommand(string packageName, string version, int minAgeDays = 0, string format = "text", bool ignoreBypass = false)
     {
+        if (!ignoreBypass && BypassList.TryGet(packageName, version, out var reason))
+        {
+            if (format == "json")
+                Console.WriteLine(JsonSerializer.Serialize(new { package = packageName, version, bypassed = true, reason }, JsonOptions));
+            else
+                Console.WriteLine($"Package {packageName} {version} is bypassed: {reason}");
+            return 0;
+        }
+
         var result = await NuGetAPI.GetPackageInfo(packageName, version, minAgeDays);
 
         if (format == "json")
