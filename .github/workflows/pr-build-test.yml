@@ -30,14 +30,11 @@ jobs:
       run: dotnet build --configuration Release --no-restore
 
     - name: Run tests
-      run: dotnet test --configuration Release --no-build --verbosity normal \
-        --results-directory ./TestResults \
-        --collect:"XPlat Code Coverage" \
-        -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
-
-    - name: Generate coverage report
-      run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage"
-      continue-on-error: true
+      run: |
+        dotnet test --configuration Release --no-build --verbosity normal \
+          --results-directory ./TestResults \
+          --collect:"XPlat Code Coverage" \
+          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
