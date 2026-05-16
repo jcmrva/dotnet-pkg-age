@@ -29,9 +29,11 @@ jobs:
     - name: Build solution
       run: dotnet build --configuration Release --no-restore
 
-
     - name: Run tests
-      run: dotnet test --configuration Release --no-build --verbosity normal
+      run: dotnet test --configuration Release --no-build --verbosity normal \
+        --results-directory ./TestResults \
+        --collect:"XPlat Code Coverage" \
+        -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
     - name: Generate coverage report
       run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage"
@@ -40,7 +42,7 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
-        files: ./coverage.xml
+        files: ./TestResults/**/coverage.cobertura.xml
         flags: unittests
         fail_ci_if_error: false
       continue-on-error: true
