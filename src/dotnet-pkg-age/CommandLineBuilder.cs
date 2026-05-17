@@ -169,6 +169,13 @@ public static class CommandLineBuilder
         return rootCommand;
     }
 
+    private static int TypePriority(string? type) => type?.ToLowerInvariant() switch
+    {
+        "direct"           => 2,
+        "centraltransitive" => 1,
+        _                  => 0
+    };
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -195,7 +202,11 @@ public static class CommandLineBuilder
             if (paths.Count == 0) { Console.Error.WriteLine("No packages.lock.json files found."); return 1; }
             foreach (var path in paths)
                 foreach (var pkg in PackageListReader.ReadPackagesLockJson(path, directOnly))
-                    packages[(pkg.Package, pkg.Version)] = pkg.Type;
+                {
+                    var key = (pkg.Package, pkg.Version);
+                    if (!packages.TryGetValue(key, out var existing) || TypePriority(pkg.Type) > TypePriority(existing))
+                        packages[key] = pkg.Type;
+                }
         }
 
         var results = new List<BulkPackageResult>();
