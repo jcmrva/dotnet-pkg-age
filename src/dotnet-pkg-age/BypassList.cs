@@ -26,8 +26,9 @@ public static class BypassList
             var json = File.ReadAllText(DefaultPath);
             return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Warning: bypass list could not be read and will be ignored ({DefaultPath}): {ex.Message}");
             return [];
         }
     }

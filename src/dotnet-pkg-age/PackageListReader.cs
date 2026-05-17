@@ -11,7 +11,17 @@ public static class PackageListReader
 {
     public static IReadOnlyList<(string Package, string Version)> ReadDirectoryPackagesProps(string path)
     {
-        var doc = XDocument.Load(path);
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Load(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        {
+            throw new InvalidOperationException(
+                $"Failed to parse {Path.GetFileName(path)}: {ex.Message}", ex);
+        }
+
         return doc.Descendants("PackageVersion")
             .Select(el => (
                 Package: el.Attribute("Include")?.Value,
@@ -44,37 +54,45 @@ public static class PackageListReader
         string path,
         bool directOnly = false)
     {
-        using var stream = File.OpenRead(path);
-        using var doc = JsonDocument.Parse(stream);
-
-        if (!doc.RootElement.TryGetProperty("dependencies", out var deps))
-            return [];
-
-        var seen = new HashSet<(string, string)>();
-        var results = new List<(string Package, string Version, string Type)>();
-
-        foreach (var framework in deps.EnumerateObject())
+        try
         {
-            foreach (var pkg in framework.Value.EnumerateObject())
+            using var stream = File.OpenRead(path);
+            using var doc = JsonDocument.Parse(stream);
+
+            if (!doc.RootElement.TryGetProperty("dependencies", out var deps))
+                return [];
+
+            var seen = new HashSet<(string, string)>();
+            var results = new List<(string Package, string Version, string Type)>();
+
+            foreach (var framework in deps.EnumerateObject())
             {
-                var typeStr = pkg.Value.TryGetProperty("type", out var typeProp)
-                    ? typeProp.GetString() ?? "Transitive"
-                    : "Transitive";
+                foreach (var pkg in framework.Value.EnumerateObject())
+                {
+                    var typeStr = pkg.Value.TryGetProperty("type", out var typeProp)
+                        ? typeProp.GetString() ?? "Transitive"
+                        : "Transitive";
 
-                if (directOnly && !typeStr.Equals("Direct", StringComparison.OrdinalIgnoreCase))
-                    continue;
+                    if (directOnly && !typeStr.Equals("Direct", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
-                if (!pkg.Value.TryGetProperty("resolved", out var resolved))
-                    continue;
+                    if (!pkg.Value.TryGetProperty("resolved", out var resolved))
+                        continue;
 
-                var version = resolved.GetString();
-                if (version is null) continue;
+                    var version = resolved.GetString();
+                    if (version is null) continue;
 
-                if (seen.Add((pkg.Name, version)))
-                    results.Add((pkg.Name, version, typeStr));
+                    if (seen.Add((pkg.Name, version)))
+                        results.Add((pkg.Name, version, typeStr));
+                }
             }
-        }
 
-        return results;
+            return results;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            throw new InvalidOperationException(
+                $"Failed to parse {Path.GetFileName(path)}: {ex.Message}", ex);
+        }
     }
 }

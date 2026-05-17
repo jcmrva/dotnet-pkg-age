@@ -84,4 +84,31 @@ public class BypassListTests : IDisposable
         Assert.True(BypassList.TryGet("System.CommandLine", "2.0.7", out var reason2));
         Assert.Equal("approved", reason2);
     }
+
+    [Fact]
+    public void TryGet_WritesWarningToStderr_WhenFileIsCorrupted()
+    {
+        WriteBypass("not valid json {{{{");
+
+        var stderr = CaptureStderr(() => BypassList.TryGet("Newtonsoft.Json", "13.0.3", out _));
+
+        Assert.Contains("Warning:", stderr);
+        Assert.Contains("bypass", stderr);
+    }
+
+    private static string CaptureStderr(Action action)
+    {
+        var writer = new StringWriter();
+        var original = Console.Error;
+        try
+        {
+            Console.SetError(writer);
+            action();
+        }
+        finally
+        {
+            Console.SetError(original);
+        }
+        return writer.ToString();
+    }
 }

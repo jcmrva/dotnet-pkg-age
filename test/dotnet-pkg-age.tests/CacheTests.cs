@@ -80,6 +80,28 @@ public class CacheTests : IDisposable
     }
 
     [Fact]
+    public void TryGet_WritesWarningToStderr_WhenCacheFileIsCorrupted()
+    {
+        File.WriteAllText(Cache.CachePath, "not valid json {{{{");
+
+        var stderr = CaptureStderr(() => Cache.TryGet("Newtonsoft.Json", "13.0.3", out _));
+
+        Assert.Contains("Warning:", stderr);
+        Assert.Contains("cache", stderr);
+    }
+
+    [Fact]
+    public void Set_WritesWarningToStderr_WhenCachePathIsNotWritable()
+    {
+        Cache.CachePath = _tempDir; // directory, not a file — WriteAllText will throw
+
+        var stderr = CaptureStderr(() => Cache.Set("Newtonsoft.Json", "13.0.3", DateTimeOffset.UtcNow));
+
+        Assert.Contains("Warning:", stderr);
+        Assert.Contains("cache", stderr);
+    }
+
+    [Fact]
     public void Set_PersistsAcrossMultipleEntries()
     {
         var date1 = new DateTimeOffset(2021, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -156,5 +178,21 @@ public class CacheTests : IDisposable
 
         Assert.Equal(1, removed);
         Assert.False(Cache.TryGet("Newtonsoft.Json", "13.0.3", out _));
+    }
+
+    private static string CaptureStderr(Action action)
+    {
+        var writer = new StringWriter();
+        var original = Console.Error;
+        try
+        {
+            Console.SetError(writer);
+            action();
+        }
+        finally
+        {
+            Console.SetError(original);
+        }
+        return writer.ToString();
     }
 }

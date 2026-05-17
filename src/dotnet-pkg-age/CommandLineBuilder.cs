@@ -191,22 +191,46 @@ public static class CommandLineBuilder
         if (useProps)
         {
             var path = PackageListReader.FindDirectoryPackagesProps();
-            if (path is null) { Console.Error.WriteLine("Directory.Packages.props not found."); return 1; }
-            foreach (var pkg in PackageListReader.ReadDirectoryPackagesProps(path))
-                packages.TryAdd((pkg.Package, pkg.Version), null);
+            if (path is null) { Console.Error.WriteLine("Error: Directory.Packages.props not found."); return 1; }
+            try
+            {
+                foreach (var pkg in PackageListReader.ReadDirectoryPackagesProps(path))
+                    packages.TryAdd((pkg.Package, pkg.Version), null);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.Error.WriteLine($"Error: {ex.Message}");
+                return 1;
+            }
         }
 
         if (useLockFiles)
         {
             var paths = PackageListReader.FindPackagesLockFiles();
-            if (paths.Count == 0) { Console.Error.WriteLine("No packages.lock.json files found."); return 1; }
+            if (paths.Count == 0) { Console.Error.WriteLine("Error: No packages.lock.json files found."); return 1; }
             foreach (var path in paths)
-                foreach (var pkg in PackageListReader.ReadPackagesLockJson(path, directOnly))
+            {
+                try
                 {
-                    var key = (pkg.Package, pkg.Version);
-                    if (!packages.TryGetValue(key, out var existing) || TypePriority(pkg.Type) > TypePriority(existing))
-                        packages[key] = pkg.Type;
+                    foreach (var pkg in PackageListReader.ReadPackagesLockJson(path, directOnly))
+                    {
+                        var key = (pkg.Package, pkg.Version);
+                        if (!packages.TryGetValue(key, out var existing) || TypePriority(pkg.Type) > TypePriority(existing))
+                            packages[key] = pkg.Type;
+                    }
                 }
+                catch (InvalidOperationException ex)
+                {
+                    Console.Error.WriteLine($"Error: {ex.Message}");
+                    return 1;
+                }
+            }
+        }
+
+        if (packages.Count == 0)
+        {
+            Console.Error.WriteLine("Warning: no packages found in the specified sources.");
+            return 0;
         }
 
         var results = new List<BulkPackageResult>();
@@ -220,7 +244,21 @@ public static class CommandLineBuilder
                 toCheck.Add(pkg);
         }
 
-        var published = await NuGetAPI.GetPublishedDatesBatch(toCheck, cancellationToken);
+        IReadOnlyDictionary<(string Package, string Version), DateTimeOffset?> published;
+        try
+        {
+            published = await NuGetAPI.GetPublishedDatesBatch(toCheck, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+
         foreach (var (pkg, date) in published)
         {
             var depType = packages.GetValueOrDefault(pkg);
@@ -280,7 +318,20 @@ public static class CommandLineBuilder
             return 0;
         }
 
-        var result = await NuGetAPI.GetPackageInfo(packageName, version, minAgeDays);
+        PackageCheckResult result;
+        try
+        {
+            result = await NuGetAPI.GetPackageInfo(packageName, version, minAgeDays);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
 
         if (format == "json")
         {

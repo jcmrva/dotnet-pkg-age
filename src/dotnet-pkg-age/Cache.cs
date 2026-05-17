@@ -56,16 +56,24 @@ public static class Cache
             var json = File.ReadAllText(CachePath);
             return JsonSerializer.Deserialize<Dictionary<string, DateTimeOffset>>(json) ?? [];
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Warning: cache could not be read and will be ignored ({CachePath}): {ex.Message}");
             return [];
         }
     }
 
     private static void Save(Dictionary<string, DateTimeOffset> entries)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(CachePath)!);
-        File.WriteAllText(CachePath, JsonSerializer.Serialize(entries, JsonOptions));
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CachePath)!);
+            File.WriteAllText(CachePath, JsonSerializer.Serialize(entries, JsonOptions));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Warning: cache could not be written ({CachePath}): {ex.Message}");
+        }
     }
 
     private static string Key(string packageName, string version) => $"{packageName}@{version}";

@@ -281,4 +281,52 @@ public class PackageListReaderTests : IDisposable
 
         Assert.Empty(result);
     }
+
+    // --- Error handling ---
+
+    [Fact]
+    public void ReadDirectoryPackagesProps_ThrowsInvalidOperationException_WhenXmlIsMalformed()
+    {
+        var path = WriteFile("Directory.Packages.props", "this is not xml <<<");
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => PackageListReader.ReadDirectoryPackagesProps(path));
+
+        Assert.Contains("Failed to parse", ex.Message);
+        Assert.Contains("Directory.Packages.props", ex.Message);
+    }
+
+    [Fact]
+    public void ReadDirectoryPackagesProps_ThrowsInvalidOperationException_WhenFileDoesNotExist()
+    {
+        var path = Path.Combine(_tempDir, "nonexistent.props");
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => PackageListReader.ReadDirectoryPackagesProps(path));
+
+        Assert.Contains("Failed to parse", ex.Message);
+    }
+
+    [Fact]
+    public void ReadPackagesLockJson_ThrowsInvalidOperationException_WhenJsonIsMalformed()
+    {
+        var path = WriteFile("packages.lock.json", "not valid json {{{");
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => PackageListReader.ReadPackagesLockJson(path));
+
+        Assert.Contains("Failed to parse", ex.Message);
+        Assert.Contains("packages.lock.json", ex.Message);
+    }
+
+    [Fact]
+    public void ReadPackagesLockJson_ThrowsInvalidOperationException_WhenFileDoesNotExist()
+    {
+        var path = Path.Combine(_tempDir, "nonexistent.lock.json");
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => PackageListReader.ReadPackagesLockJson(path));
+
+        Assert.Contains("Failed to parse", ex.Message);
+    }
 }
