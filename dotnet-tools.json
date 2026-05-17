@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "dotnet-pkg-age": {
+      "version": "1.0.0",
+      "commands": [
+        "pkg-age"
+      ],
+      "rollForward": false
+    }
+  }
+}
