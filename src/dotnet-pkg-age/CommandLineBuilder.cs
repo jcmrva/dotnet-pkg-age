@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.CommandLine;
+using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DotnetPkgAge;
@@ -99,8 +102,69 @@ public static class CommandLineBuilder
             }
         });
 
+        Argument<int> bulkAgeArg = new("min-age-days")
+        {
+            Description = "Minimum age in days all packages must meet"
+        };
+
+        Option<bool> propsOption = new("--props")
+        {
+            Description = "Check packages from auto-discovered Directory.Packages.props"
+        };
+
+        Option<bool> lockFilesOption = new("--lock-files")
+        {
+            Description = "Check packages from auto-discovered packages.lock.json files"
+        };
+
+        Option<bool> directOnlyOption = new("--direct-only")
+        {
+            Description = "Only check direct dependencies (lock files only)"
+        };
+
+        Option<string> bulkFormatOption = new("--format", "-f")
+        {
+            Description = "Output format: text (default) or json",
+            DefaultValueFactory = _ => "text"
+        };
+        bulkFormatOption.AcceptOnlyFromAmong("text", "json");
+
+        Option<bool> bulkIgnoreBypassOption = new("--ignore-bypass")
+        {
+            Description = $"Ignore the bypass list at {BypassList.DefaultPath}"
+        };
+
+        Command bulkCommand = new("bulk", "Check all packages from project files")
+        {
+            bulkAgeArg,
+            propsOption,
+            lockFilesOption,
+            directOnlyOption,
+            bulkFormatOption,
+            bulkIgnoreBypassOption
+        };
+
+        bulkCommand.SetAction(async (parseResult, cancellationToken) =>
+        {
+            int minAgeDays = parseResult.GetValue(bulkAgeArg);
+            bool useProps = parseResult.GetValue(propsOption);
+            bool useLockFiles = parseResult.GetValue(lockFilesOption);
+            bool directOnly = parseResult.GetValue(directOnlyOption);
+            string format = parseResult.GetValue(bulkFormatOption)!;
+            bool ignoreBypass = parseResult.GetValue(bulkIgnoreBypassOption);
+
+            if (!useProps && !useLockFiles)
+            {
+                Console.Error.WriteLine("Specify at least one source: --props or --lock-files");
+                return 1;
+            }
+
+            return await HandleBulkCommand(minAgeDays, useProps, useLockFiles, directOnly, format, ignoreBypass, cancellationToken);
+        });
+
         rootCommand.Subcommands.Add(pkgCommand);
         rootCommand.Subcommands.Add(cacheCommand);
+        rootCommand.Subcommands.Add(bulkCommand);
 
         return rootCommand;
     }
@@ -110,6 +174,89 @@ public static class CommandLineBuilder
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
+
+    private static async Task<int> HandleBulkCommand(
+        int minAgeDays, bool useProps, bool useLockFiles, bool directOnly,
+        string format, bool ignoreBypass, CancellationToken cancellationToken)
+    {
+        var packages = new Dictionary<(string Package, string Version), string?>();
+
+        if (useProps)
+        {
+            var path = PackageListReader.FindDirectoryPackagesProps();
+            if (path is null) { Console.Error.WriteLine("Directory.Packages.props not found."); return 1; }
+            foreach (var pkg in PackageListReader.ReadDirectoryPackagesProps(path))
+                packages.TryAdd((pkg.Package, pkg.Version), null);
+        }
+
+        if (useLockFiles)
+        {
+            var paths = PackageListReader.FindPackagesLockFiles();
+            if (paths.Count == 0) { Console.Error.WriteLine("No packages.lock.json files found."); return 1; }
+            foreach (var path in paths)
+                foreach (var pkg in PackageListReader.ReadPackagesLockJson(path, directOnly))
+                    packages[(pkg.Package, pkg.Version)] = pkg.Type;
+        }
+
+        var results = new List<BulkPackageResult>();
+
+        var toCheck = new List<(string Package, string Version)>();
+        foreach (var (pkg, depType) in packages)
+        {
+            if (!ignoreBypass && BypassList.TryGet(pkg.Package, pkg.Version, out var reason))
+                results.Add(new BulkPackageResult(pkg.Package, pkg.Version, "bypass", null, reason, depType));
+            else
+                toCheck.Add(pkg);
+        }
+
+        var published = await NuGetAPI.GetPublishedDatesBatch(toCheck, cancellationToken);
+        foreach (var (pkg, date) in published)
+        {
+            var depType = packages.GetValueOrDefault(pkg);
+            if (date is null)
+            {
+                results.Add(new BulkPackageResult(pkg.Package, pkg.Version, "not_found", null, null, depType));
+                continue;
+            }
+            var ageDays = (int)(DateTimeOffset.Now - date.Value).TotalDays;
+            var status = ageDays >= minAgeDays ? "pass" : "fail";
+            results.Add(new BulkPackageResult(pkg.Package, pkg.Version, status, ageDays, null, depType));
+        }
+
+        results.Sort((a, b) => string.Compare(a.Package, b.Package, StringComparison.OrdinalIgnoreCase));
+
+        var summary = new BulkSummary(
+            results.Count(r => r.Status == "pass"),
+            results.Count(r => r.Status == "fail"),
+            results.Count(r => r.Status == "bypass"),
+            results.Count(r => r.Status == "not_found"));
+
+        if (format == "json")
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new { minAgeDays, results, summary }, JsonOptions));
+        }
+        else
+        {
+            foreach (var r in results)
+            {
+                var label = r.Status.ToUpperInvariant().PadRight(8);
+                var typeTag = r.DependencyType is { } t ? $"[{t.ToLowerInvariant()}] " : "";
+                var detail = r.Status switch
+                {
+                    "pass"      => $"({r.AgeDays} days)",
+                    "fail"      => $"({r.AgeDays} days, requires {minAgeDays})",
+                    "bypass"    => $"({r.BypassReason})",
+                    "not_found" => "(not found on NuGet)",
+                    _           => string.Empty
+                };
+                Console.WriteLine($"{label} {r.Package} {r.Version} {typeTag}{detail}");
+            }
+            Console.WriteLine();
+            Console.WriteLine($"{packages.Count} packages: {summary.Passed} passed, {summary.Failed} failed, {summary.Bypassed} bypassed, {summary.NotFound} not found");
+        }
+
+        return summary.Failed > 0 ? 1 : 0;
+    }
 
     private static async Task<int> HandleCommand(string packageName, string version, int minAgeDays = 0, string format = "text", bool ignoreBypass = false)
     {

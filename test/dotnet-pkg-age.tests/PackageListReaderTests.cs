@@ -113,8 +113,29 @@ public class PackageListReaderTests : IDisposable
         var result = PackageListReader.ReadPackagesLockJson(path);
 
         Assert.Equal(2, result.Count);
-        Assert.Contains(("Newtonsoft.Json", "13.0.3"), result);
-        Assert.Contains(("SomeDep", "1.0.0"), result);
+        Assert.Contains(("Newtonsoft.Json", "13.0.3", "Direct"), result);
+        Assert.Contains(("SomeDep", "1.0.0", "Transitive"), result);
+    }
+
+    [Fact]
+    public void ReadPackagesLockJson_ReturnsCorrectType()
+    {
+        var path = WriteFile("packages.lock.json", """
+            {
+              "version": 2,
+              "dependencies": {
+                "net8.0": {
+                  "Newtonsoft.Json": { "type": "Direct", "resolved": "13.0.3" },
+                  "SomeDep": { "type": "Transitive", "resolved": "1.0.0" }
+                }
+              }
+            }
+            """);
+
+        var result = PackageListReader.ReadPackagesLockJson(path);
+
+        Assert.Equal("Direct", result.Single(r => r.Package == "Newtonsoft.Json").Type);
+        Assert.Equal("Transitive", result.Single(r => r.Package == "SomeDep").Type);
     }
 
     [Fact]
@@ -135,7 +156,7 @@ public class PackageListReaderTests : IDisposable
         var result = PackageListReader.ReadPackagesLockJson(path, directOnly: true);
 
         Assert.Single(result);
-        Assert.Contains(("Newtonsoft.Json", "13.0.3"), result);
+        Assert.Contains(("Newtonsoft.Json", "13.0.3", "Direct"), result);
     }
 
     [Fact]
@@ -178,7 +199,7 @@ public class PackageListReaderTests : IDisposable
         var result = PackageListReader.ReadPackagesLockJson(path);
 
         Assert.Single(result);
-        Assert.Contains(("Newtonsoft.Json", "13.0.3"), result);
+        Assert.Contains(("Newtonsoft.Json", "13.0.3", "Direct"), result);
     }
 
     [Fact]
@@ -189,6 +210,74 @@ public class PackageListReaderTests : IDisposable
             """);
 
         var result = PackageListReader.ReadPackagesLockJson(path);
+
+        Assert.Empty(result);
+    }
+
+    // --- FindDirectoryPackagesProps ---
+
+    [Fact]
+    public void FindDirectoryPackagesProps_FindsFile_InStartDir()
+    {
+        WriteFile("Directory.Packages.props", "<Project />");
+
+        var result = PackageListReader.FindDirectoryPackagesProps(_tempDir);
+
+        Assert.Equal(Path.Combine(_tempDir, "Directory.Packages.props"), result);
+    }
+
+    [Fact]
+    public void FindDirectoryPackagesProps_FindsFile_InParentDir()
+    {
+        WriteFile("Directory.Packages.props", "<Project />");
+        var subDir = Directory.CreateDirectory(Path.Combine(_tempDir, "src", "MyProject")).FullName;
+
+        var result = PackageListReader.FindDirectoryPackagesProps(subDir);
+
+        Assert.Equal(Path.Combine(_tempDir, "Directory.Packages.props"), result);
+    }
+
+    [Fact]
+    public void FindDirectoryPackagesProps_ReturnsNull_WhenNotFound()
+    {
+        var result = PackageListReader.FindDirectoryPackagesProps(_tempDir);
+
+        Assert.Null(result);
+    }
+
+    // --- FindPackagesLockFiles ---
+
+    [Fact]
+    public void FindPackagesLockFiles_FindsFiles_InSubdirectories()
+    {
+        var proj1 = Directory.CreateDirectory(Path.Combine(_tempDir, "src", "ProjectA")).FullName;
+        var proj2 = Directory.CreateDirectory(Path.Combine(_tempDir, "src", "ProjectB")).FullName;
+        File.WriteAllText(Path.Combine(proj1, "packages.lock.json"), "{}");
+        File.WriteAllText(Path.Combine(proj2, "packages.lock.json"), "{}");
+
+        var result = PackageListReader.FindPackagesLockFiles(_tempDir);
+
+        Assert.Equal(2, result.Count);
+    }
+
+    [Fact]
+    public void FindPackagesLockFiles_ExcludesFilesInObjDirectory()
+    {
+        var proj = Directory.CreateDirectory(Path.Combine(_tempDir, "src", "Project")).FullName;
+        var obj = Directory.CreateDirectory(Path.Combine(proj, "obj")).FullName;
+        File.WriteAllText(Path.Combine(proj, "packages.lock.json"), "{}");
+        File.WriteAllText(Path.Combine(obj, "packages.lock.json"), "{}");
+
+        var result = PackageListReader.FindPackagesLockFiles(_tempDir);
+
+        Assert.Single(result);
+        Assert.DoesNotContain(result, f => f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"));
+    }
+
+    [Fact]
+    public void FindPackagesLockFiles_ReturnsEmpty_WhenNoneExist()
+    {
+        var result = PackageListReader.FindPackagesLockFiles(_tempDir);
 
         Assert.Empty(result);
     }

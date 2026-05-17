@@ -1,10 +1,8 @@
 using System.Collections.Generic;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System;
 using System.Linq;
-using System.Xml.Linq;
 using NuGet.Protocol.Core.Types;
 using NuGet.Protocol;
 using NuGet.Common;
@@ -13,12 +11,8 @@ namespace DotnetPkgAge;
 
 public class NuGetAPI
 {
-    private static readonly HttpClient HttpClient = new();
-    private const int BatchSize = 20;
-
-    private static readonly XNamespace Atom = "http://www.w3.org/2005/Atom";
-    private static readonly XNamespace D = "http://schemas.microsoft.com/ado/2007/08/dataservices";
-    private static readonly XNamespace M = "http://schemas.microsoft.com/ado/2007/08/dataservices/metadata";
+    private const int MaxConcurrency = 8;
+    private const string FeedUrl = "https://api.nuget.org/v3/index.json";
 
     public static async Task<PackageCheckResult> GetPackageInfo(string packageName, string version, int minAgeDays)
     {
@@ -26,7 +20,7 @@ public class NuGetAPI
             return new PackageCheckResult(packageName, version, minAgeDays, cachedPublished);
 
         var cache = new SourceCacheContext();
-        var repo = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
+        var repo = Repository.Factory.GetCoreV3(FeedUrl);
         var resource = await repo.GetResourceAsync<PackageMetadataResource>();
         var metadata = await resource.GetMetadataAsync(
             packageName, includePrerelease: false, includeUnlisted: false, cache, NullLogger.Instance, CancellationToken.None);
@@ -58,41 +52,42 @@ public class NuGetAPI
 
         if (toFetch.Count == 0) return result;
 
-        foreach (var chunk in toFetch.Chunk(BatchSize))
+        var semaphore = new SemaphoreSlim(MaxConcurrency);
+        var sourceCache = new SourceCacheContext();
+        var repo = Repository.Factory.GetCoreV3(FeedUrl);
+        var resource = await repo.GetResourceAsync<PackageMetadataResource>(cancellationToken);
+
+        var tasks = toFetch.Select(async pkg =>
         {
-            var filter = string.Join(" or ", chunk.Select(p =>
-                $"(Id eq '{ODataEscape(p.Package)}' and NormalizedVersion eq '{ODataEscape(p.Version)}')"));
-
-            var url = "https://www.nuget.org/api/v2/Packages()?" +
-                        $"$filter={Uri.EscapeDataString(filter)}" +
-                        "&$select=Id,NormalizedVersion,Published";
-
-            using var response = await HttpClient.GetAsync(url, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var doc = await XDocument.LoadAsync(stream, LoadOptions.None, cancellationToken);
-
-            foreach (var entry in doc.Descendants(Atom + "entry"))
+            await semaphore.WaitAsync(cancellationToken);
+            try
             {
-                var props = entry.Element(M + "properties");
-                var id = props?.Element(D + "Id")?.Value;
-                var version = props?.Element(D + "NormalizedVersion")?.Value;
-                var publishedStr = props?.Element(D + "Published")?.Value;
+                var metadata = await resource.GetMetadataAsync(
+                    pkg.Package, includePrerelease: false, includeUnlisted: false,
+                    sourceCache, NullLogger.Instance, cancellationToken);
 
-                if (id is null || version is null) continue;
-                if (!DateTimeOffset.TryParse(publishedStr, out var published)) continue;
+                var match = metadata.FirstOrDefault(m => m.Identity.Version.ToString() == pkg.Version);
+                return (pkg, Date: match?.Published);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
 
-                result[(id, version)] = published;
-                Cache.Set(id, version, published);
+        foreach (var (pkg, date) in await Task.WhenAll(tasks))
+        {
+            if (date is { } published)
+            {
+                Cache.Set(pkg.Package, pkg.Version, published);
+                result[pkg] = published;
+            }
+            else
+            {
+                result[pkg] = null;
             }
         }
 
-        foreach (var pkg in toFetch.Where(p => !result.ContainsKey(p)))
-            result[pkg] = null;
-
         return result;
     }
-
-    private static string ODataEscape(string value) => value.Replace("'", "''");
 }

@@ -21,7 +21,26 @@ public static class PackageListReader
             .ToList();
     }
 
-    public static IReadOnlyList<(string Package, string Version)> ReadPackagesLockJson(
+    public static string? FindDirectoryPackagesProps(string? startDir = null)
+    {
+        var dir = new DirectoryInfo(startDir ?? Directory.GetCurrentDirectory());
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "Directory.Packages.props");
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+        return null;
+    }
+
+    public static IReadOnlyList<string> FindPackagesLockFiles(string? startDir = null)
+    {
+        var root = startDir ?? Directory.GetCurrentDirectory();
+        return [..Directory.EnumerateFiles(root, "packages.lock.json", SearchOption.AllDirectories)
+            .Where(f => !f.Split(Path.DirectorySeparatorChar).Contains("obj"))];
+    }
+
+    public static IReadOnlyList<(string Package, string Version, string Type)> ReadPackagesLockJson(
         string path,
         bool directOnly = false)
     {
@@ -32,15 +51,17 @@ public static class PackageListReader
             return [];
 
         var seen = new HashSet<(string, string)>();
-        var results = new List<(string Package, string Version)>();
+        var results = new List<(string Package, string Version, string Type)>();
 
         foreach (var framework in deps.EnumerateObject())
         {
             foreach (var pkg in framework.Value.EnumerateObject())
             {
-                if (directOnly &&
-                    pkg.Value.TryGetProperty("type", out var type) &&
-                    !"Direct".Equals(type.GetString(), StringComparison.OrdinalIgnoreCase))
+                var typeStr = pkg.Value.TryGetProperty("type", out var typeProp)
+                    ? typeProp.GetString() ?? "Transitive"
+                    : "Transitive";
+
+                if (directOnly && !typeStr.Equals("Direct", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 if (!pkg.Value.TryGetProperty("resolved", out var resolved))
@@ -49,9 +70,8 @@ public static class PackageListReader
                 var version = resolved.GetString();
                 if (version is null) continue;
 
-                var entry = (pkg.Name, version);
-                if (seen.Add(entry))
-                    results.Add(entry);
+                if (seen.Add((pkg.Name, version)))
+                    results.Add((pkg.Name, version, typeStr));
             }
         }
 

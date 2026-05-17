@@ -14,3 +14,13 @@ public record PackageCheckResult(
 
     public bool MeetsRequirement => AgeDays.HasValue && AgeDays.Value >= MinAgeDays;
 }
+
+public record BulkPackageResult(
+    string Package,
+    string Version,
+    string Status,
+    int? AgeDays,
+    string? BypassReason,
+    string? DependencyType);
+
+public record BulkSummary(int Passed, int Failed, int Bypassed, int NotFound);
