@@ -25,7 +25,7 @@ public class NuGetAPI
             var repo = Repository.Factory.GetCoreV3(FeedUrl);
             var resource = await repo.GetResourceAsync<PackageMetadataResource>();
             var metadata = await resource.GetMetadataAsync(
-                packageName, includePrerelease: false, includeUnlisted: false, cache, NullLogger.Instance, CancellationToken.None);
+                packageName, includePrerelease: true, includeUnlisted: false, cache, NullLogger.Instance, CancellationToken.None);
 
             var match = metadata.FirstOrDefault(pkg => pkg.Identity.Version.ToString() == version);
             if (match?.Published is { } published)
@@ -86,7 +86,7 @@ public class NuGetAPI
             try
             {
                 var metadata = await resource.GetMetadataAsync(
-                    pkg.Package, includePrerelease: false, includeUnlisted: false,
+                    pkg.Package, includePrerelease: true, includeUnlisted: false,
                     sourceCache, NullLogger.Instance, cancellationToken);
 
                 var match = metadata.FirstOrDefault(m => m.Identity.Version.ToString() == pkg.Version);
