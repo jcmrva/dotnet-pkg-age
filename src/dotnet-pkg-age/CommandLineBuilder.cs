@@ -238,8 +238,10 @@ public static class CommandLineBuilder
         var toCheck = new List<(string Package, string Version)>();
         foreach (var (pkg, depType) in packages)
         {
-            if (!ignoreBypass && BypassList.TryGet(pkg.Package, pkg.Version, out var reason))
-                results.Add(new BulkPackageResult(pkg.Package, pkg.Version, "bypass", null, reason, depType));
+            BypassList.TryGet(pkg.Package, pkg.Version, out var reason);
+            if (reason is not null)
+                results.Add(new BulkPackageResult(pkg.Package, pkg.Version,
+                    ignoreBypass ? "fail" : "bypass", null, reason, depType));
             else
                 toCheck.Add(pkg);
         }
@@ -292,11 +294,12 @@ public static class CommandLineBuilder
                 var typeTag = r.DependencyType is { } t ? $"[{t.ToLowerInvariant()}] " : "";
                 var detail = r.Status switch
                 {
-                    "pass"      => $"({r.AgeDays} days)",
-                    "fail"      => $"({r.AgeDays} days, requires {minAgeDays})",
-                    "bypass"    => $"({r.BypassReason})",
-                    "not_found" => "(not found on NuGet)",
-                    _           => string.Empty
+                    "pass"                              => $"({r.AgeDays} days)",
+                    "fail" when r.BypassReason is not null => $"(bypass overridden: {r.BypassReason})",
+                    "fail"                              => $"({r.AgeDays} days, requires {minAgeDays})",
+                    "bypass"                            => $"({r.BypassReason})",
+                    "not_found"                         => "(not found on NuGet)",
+                    _                                   => string.Empty
                 };
                 Console.WriteLine($"{label} {r.Package} {r.Version} {typeTag}{detail}");
             }
@@ -309,12 +312,23 @@ public static class CommandLineBuilder
 
     private static async Task<int> HandleCommand(string packageName, string version, int minAgeDays = 0, string format = "text", bool ignoreBypass = false)
     {
-        if (!ignoreBypass && BypassList.TryGet(packageName, version, out var reason))
+        BypassList.TryGet(packageName, version, out var bypassReason);
+
+        if (bypassReason is not null)
         {
+            if (ignoreBypass)
+            {
+                if (format == "json")
+                    Console.WriteLine(JsonSerializer.Serialize(new { package = packageName, version, bypassed = false, bypassOverridden = true, reason = bypassReason }, JsonOptions));
+                else
+                    Console.WriteLine($"Package {packageName} {version} FAIL — bypass overridden: {bypassReason}");
+                return 1;
+            }
+
             if (format == "json")
-                Console.WriteLine(JsonSerializer.Serialize(new { package = packageName, version, bypassed = true, reason }, JsonOptions));
+                Console.WriteLine(JsonSerializer.Serialize(new { package = packageName, version, bypassed = true, reason = bypassReason }, JsonOptions));
             else
-                Console.WriteLine($"Package {packageName} {version} is bypassed: {reason}");
+                Console.WriteLine($"Package {packageName} {version} is bypassed: {bypassReason}");
             return 0;
         }
 
@@ -334,9 +348,7 @@ public static class CommandLineBuilder
         }
 
         if (format == "json")
-        {
             Console.WriteLine(JsonSerializer.Serialize(result, JsonOptions));
-        }
         else
         {
             Console.WriteLine($"Package {packageName} {version} should be at least {minAgeDays} days old.");
