@@ -2,60 +2,55 @@
 
 Pulls metadata from nuget.org to determine how recently a package was published, mostly for compliance with public package cooldown rules.
 
+- Check one package or everything in a solution.
+- Package name, version, and publish date are automatically cached.
+- Bypass list enables hotfixes to avoid the minimum age check.
+
 ## [Install](https://www.nuget.org/packages/dotnet-pkg-age/)
 
 `dotnet tool install dotnet-pkg-age`
 
 Requires .NET SDK 8.0 or greater.
 
-## Usage
-
-```bash
-Description:
-  A dotnet tool to check the age of NuGet packages.
-
-Usage:
-  dotnet-pkg-age [command] [options]
-
-Options:
-  -?, -h, --help  Show help and usage information
-  --version       Show version information
-
-Commands:
-  package <name> <version> <min-age-days>  Check a specific package
-```
-
-`package` command:
-
-```bash
-Usage:
-  dotnet-pkg-age package <name> <version> <min-age-days> [options]
-
-Arguments:
-  <name>          The package to check
-  <version>       The package version to check
-  <min-age-days>  Desired minimum age of the package in days
-
-Options:
-  -c, --cache-file <cache-file>  Path to the cache file (default: ~/.dotnet-pkg-age/cache.json)
-```
-
 ## Examples
 
-```bash
-dotnet pkg-age package System.CommandLine 2.0.7 10
+`package` - check a single package, version, and minimum age:
+
+```console
+dotnet pkg-age package xunit 2.9.3 10
 ```
 
-From this repo:
+`bulk` - check all packages in a solution's `packages.lock.json` files:
 
-```bash
-dotnet run --project ./src/dotnet-pkg-age/ -- package System.CommandLine 2.0.7 10
-
-# or install it
-
-dotnet tool install --local dotnet-pkg-age --add-source ./src/dotnet-pkg-age/nupkg
-dotnet pkg-age package System.CommandLine 2.0.7 10
+```console
+dotnet pkg-age bulk 5 --lock-files
 ```
+
+`bulk` - check all packages in a `Directory.Packages.props` file and output json:
+
+```console
+dotnet pkg-age bulk 5 --props -f json
+```
+
+`cache` - clear the entire cache:
+
+```console
+dotnet pkg-age cache --clear-all
+```
+
+The GitHub wiki has more examples and documentation.
+
+## Bypass list
+
+Specific package versions can be excluded from the age check by adding them to `.config/pkg-age-bypass.json` at the repo root. This is intended for security hotfixes where a version must be adopted immediately regardless of age.
+
+```json
+{
+  "NuGet.Versioning@7.6.0": "critical fix, approved by management"
+}
+```
+
+Use `--ignore-bypass` to override the bypass list and enforce the age check regardless.
 
 ## Key Dependencies
 
@@ -65,9 +60,5 @@ dotnet pkg-age package System.CommandLine 2.0.7 10
 
 ## TODO
 
-- **Bulk input** - accept a `Directory.Packages.props` or `packages.lock.json` file and check all listed packages in one run (*proj files not planned)
-- **Bypass list** - enter specific package versions to skip the age check, typically for security hotfixes (package-age-bypass.json) `{ "System.CommandLine@2.0.8": "reason..." }`
 - **Build integration** - Fail builds if a new package version is too new
 - **Custom NuGet feed** - `--source` option to target private or internal feeds instead of nuget.org (maybe not)
-- **Prerelease support** - opt-in flag to include prerelease versions in the lookup
-- **JSON output** - `--format json` for scripting and downstream tooling, provide json schema
