@@ -58,7 +58,25 @@ Use `--ignore-bypass` to override the bypass list and enforce the age check rega
 - `NuGet.Protocol` & `NuGet.Versioning` for working with the NuGet API
 - `Xunit` for automated testing
 
-## TODO
+## Build integration
 
-- **Build integration** - Fail builds if a new package version is too new
-- **Custom NuGet feed** - `--source` option to target private or internal feeds instead of nuget.org (maybe not)
+Add a `Directory.Build.targets` file at the repo root to fail the build when any package is too new:
+
+```xml
+<Project>
+  <Target Name="CheckPackageAge" BeforeTargets="Build">
+    <Exec Command="dotnet pkg-age bulk 10 --props"
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="PkgAgeExitCode" />
+      <Output TaskParameter="ConsoleOutput" PropertyName="PkgAgeOutput" />
+    </Exec>
+    <Error Condition="'$(PkgAgeExitCode)' != '0'" Text="$(PkgAgeOutput)" />
+  </Target>
+</Project>
+```
+
+- `WorkingDirectory="$(MSBuildThisFileDirectory)"` ensures the bypass file and `Directory.Packages.props` are resolved relative to the repo root, not the project directory.
+- `ConsoleToMSBuild="true"` + `IgnoreExitCode="true"` + `<Error>` replace the default `MSB3073` exit-code error with the actual pkg-age output so failing package names appear in the build summary.
+- To skip the check in CI, add `AND '$(GITHUB_ACTIONS)' != 'true'` to the target's `Condition`.

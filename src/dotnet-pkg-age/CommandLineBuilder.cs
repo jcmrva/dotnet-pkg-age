@@ -301,10 +301,17 @@ public static class CommandLineBuilder
                     "not_found"                         => "(not found on NuGet)",
                     _                                   => string.Empty
                 };
-                Console.WriteLine($"{label} {r.Package} {r.Version} {typeTag}{detail}");
+                if (r.Status == "fail")
+                    Console.WriteLine($"error : {r.Package} {r.Version} {typeTag}{detail}");
+                else
+                    Console.WriteLine($"{label} {r.Package} {r.Version} {typeTag}{detail}");
             }
             Console.WriteLine();
-            Console.WriteLine($"{packages.Count} packages: {summary.Passed} passed, {summary.Failed} failed, {summary.Bypassed} bypassed, {summary.NotFound} not found");
+            var summaryLine = $"{packages.Count} packages: {summary.Passed} passed, {summary.Failed} failed, {summary.Bypassed} bypassed, {summary.NotFound} not found";
+            if (summary.Failed > 0)
+                Console.WriteLine($"error : {summaryLine}");
+            else
+                Console.WriteLine(summaryLine);
         }
 
         return summary.Failed > 0 ? 1 : 0;

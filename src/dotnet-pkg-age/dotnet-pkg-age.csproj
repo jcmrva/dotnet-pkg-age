@@ -8,7 +8,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>pkg-age</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild Condition="'$(GITHUB_ACTIONS)' != 'true'">true</GeneratePackageOnBuild>
     <PackageId>dotnet-pkg-age</PackageId>
     <Authors>jcmrva</Authors>
     <Company>n/a</Company>

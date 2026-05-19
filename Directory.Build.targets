@@ -1,5 +1,16 @@
 <Project>
- <PropertyGroup>
-  <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
- </PropertyGroup>
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <Target Name="CheckPackageAge" BeforeTargets="Build"
+          Condition="'$(MSBuildProjectName)' != 'dotnet-pkg-age' AND '$(GITHUB_ACTIONS)' != 'true'">
+    <Exec Command="dotnet pkg-age bulk 10 --props"
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="PkgAgeExitCode" />
+      <Output TaskParameter="ConsoleOutput" PropertyName="PkgAgeOutput" />
+    </Exec>
+    <Error Condition="'$(PkgAgeExitCode)' != '0'" Text="$(PkgAgeOutput)" />
+  </Target>
 </Project>
